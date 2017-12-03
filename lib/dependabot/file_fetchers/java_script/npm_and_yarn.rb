@@ -23,8 +23,10 @@ module Dependabot
           fetched_files << package_lock if package_lock
           fetched_files << yarn_lock if yarn_lock
           fetched_files << npmrc if npmrc
+          fetched_files << lerna_json if lerna_json
           fetched_files += path_dependencies
           fetched_files += workspace_package_jsons
+          fetched_files += lerna_packages
           fetched_files
         end
 
@@ -42,6 +44,10 @@ module Dependabot
 
         def npmrc
           @npmrc ||= fetch_file_if_present(".npmrc")
+        end
+
+        def lerna_json
+          @lerna ||= fetch_file_if_present("lerna.json")
         end
 
         def path_dependencies
@@ -78,7 +84,7 @@ module Dependabot
 
           parsed_package_json["workspaces"].each do |path|
             workspaces =
-              if path.end_with?("*") then expand_workspaces(path)
+              if path.end_with?("*") then expand_paths(path)
               else [path]
               end
 
@@ -100,7 +106,37 @@ module Dependabot
           package_json_files
         end
 
-        def expand_workspaces(path)
+        def lerna_packages
+          return [] unless lerna_json
+          return [] unless parsed_lerna_json["packages"]
+          package_files = []
+          unfetchable_deps = []
+
+          parsed_lerna_json["packages"].each do |path|
+            packages =
+              if path.end_with?("*") then expand_paths(path)
+              else [path]
+              end
+
+            packages.each do |package|
+              file = File.join(package, "package.json")
+
+              begin
+                package_files << fetch_file_from_github(file)
+              rescue Dependabot::DependencyFileNotFound
+                unfetchable_deps << file
+              end
+            end
+          end
+
+          if unfetchable_deps.any?
+            raise Dependabot::PathDependenciesNotReachable, unfetchable_deps
+          end
+
+          package_files
+        end
+
+        def expand_paths(path)
           dir = directory.gsub(%r{(^/|/$)}, "")
           path = File.join(dir, path.gsub(/\*$/, ""))
           path = Pathname.new(path).cleanpath.to_path
@@ -113,6 +149,12 @@ module Dependabot
           JSON.parse(package_json.content)
         rescue JSON::ParserError
           raise Dependabot::DependencyFileNotParseable, package_json.path
+        end
+
+        def parsed_lerna_json
+          JSON.parse(lerna_json.content)
+        rescue JSON::ParserError
+          raise Dependabot::DependencyFileNotParseable, lerna_json.path
         end
       end
     end
