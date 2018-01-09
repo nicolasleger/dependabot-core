@@ -8,6 +8,7 @@ require "dependabot/file_parsers/java/maven"
 require "dependabot/file_parsers/php/composer"
 require "dependabot/file_parsers/git/submodules"
 require "dependabot/file_parsers/docker/docker"
+require "dependabot/file_parsers/dotnet/nuget"
 
 module Dependabot
   module FileParsers
@@ -22,6 +23,7 @@ module Dependabot
       when "composer" then FileParsers::Php::Composer
       when "submodules" then FileParsers::Git::Submodules
       when "docker" then FileParsers::Docker::Docker
+      when "nuget" then FileParsers::Dotnet::Nuget
       else raise "Unsupported package_manager #{package_manager}"
       end
     end
